@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: user-service
+  r2dbc:
+    url: r2dbc:postgresql://localhost:5433/tweker_test_db
+    username: postgres
+    password: .denliskom1
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-test.sql
+  kafka:
+    bootstrap-servers: localhost:9092
+
+logging:
+  level:
+    root: WARN
+    com.tweker.user: DEBUG

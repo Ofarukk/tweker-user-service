@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-service-env
+data:
+  DB_URL: r2dbc:postgresql://postgres:5432/tweker_auth_db
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
