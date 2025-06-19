@@ -45,23 +45,29 @@ jobs:
     needs: build_and_test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+
     steps:
       - name: 1. Checkout Code
         uses: actions/checkout@v4
+
       - name: 2. Download JAR Artifact
         uses: actions/download-artifact@v4
         with:
           name: user-service-jar
           path: target
+
       - name: 3. Log in to Azure
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
-      - name: 4. Log in to Azure Container Registry
-        # Bu adım Docker'ın ACR'da oturum açmasını sağlar.
+
+      - name: 4. Log in to Azure Container Registry (ACR)
         uses: azure/docker-login@v1
         with:
           login-server: twekerregistry.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
       - name: 5. Build and Push Docker Image to ACR
         uses: docker/build-push-action@v5
         with:
