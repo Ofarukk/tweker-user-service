@@ -2,7 +2,11 @@ package com.tweker.user.integration;
 
 import com.tweker.user.UserServiceApplication;
 import com.tweker.user.dto.AccountDto;
+import com.tweker.user.dto.UserFollowerDto;
+import com.tweker.user.entity.Account;
+import com.tweker.user.entity.UserFollower;
 import com.tweker.user.repository.AccountRepository;
+import com.tweker.user.repository.UserFollowerRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,6 +49,8 @@ public class UserControllerIT {
 
     @Autowired
     private AccountRepository accountRepository;
+    @Autowired
+    private UserFollowerRepository userFollowerRepository;
 
     @DynamicPropertySource
     static void setProperties(DynamicPropertyRegistry registry) {
@@ -62,6 +68,7 @@ public class UserControllerIT {
     @BeforeEach
     void setUp() {
         // Her testten önce veritabanını temizle
+        userFollowerRepository.deleteAll().block();
         accountRepository.deleteAll().block();
     }
 
@@ -87,6 +94,51 @@ public class UserControllerIT {
                 .value(responseDto -> {
                     assertThat(responseDto.getUserId()).isEqualTo(userId);
                     assertThat(responseDto.getUsername()).isEqualTo("test-user-controller");
+                });
+    }
+
+    @Test
+    void updateAccount_shouldUpdateAccountDetails() {
+        // Arrange - 1: Önce güncellenecek bir kullanıcı oluştur
+        UUID userId = UUID.randomUUID();
+        AccountDto accountToCreate = AccountDto.builder()
+                .userId(userId)
+                .username("user-to-update")
+                .displayName("Initial Name")
+                .build();
+
+        // Account'u API üzerinden oluştur
+        webTestClient.post().uri("/user/account")
+                .bodyValue(accountToCreate)
+                .exchange()
+                .expectStatus().isOk();
+
+        // Arrange - 2: Oluşturulan account'un ID'sini ve güncel bilgilerini hazırla
+        // Not: Account ID'sini almak için repository'yi kullanıyoruz.
+        Account savedAccount = accountRepository.findByUsername("user-to-update").block();
+        assertThat(savedAccount).isNotNull();
+        UUID accountId = savedAccount.getId();
+
+        AccountDto updateDto = AccountDto.builder()
+                .userId(userId) // userId değişmez
+                .username("user-updated")
+                .displayName("Updated Name")
+                .bio("This is my new bio.")
+                .location("New Location")
+                .build();
+
+
+        // Act & Assert
+        webTestClient.put().uri("/user/account/" + accountId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(updateDto)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(AccountDto.class)
+                .value(responseDto -> {
+                    assertThat(responseDto.getUsername()).isEqualTo("user-updated");
+                    assertThat(responseDto.getDisplayName()).isEqualTo("Updated Name");
+                    assertThat(responseDto.getBio()).isEqualTo("This is my new bio.");
                 });
     }
 
@@ -124,5 +176,51 @@ public class UserControllerIT {
                 .exchange()
                 .expectStatus().isOk() // WebFlux'ta Mono<T> döndüren bir endpoint, T bulunamazsa boş bir Mono döner. Bu da 200 OK ve boş bir body ile sonuçlanır.
                 .expectBody().isEmpty(); // HTTP 404 yerine boş bir body beklemek daha doğru olacaktır.
+    }
+
+    @Test
+    void followAndUnfollow_shouldWorkCorrectly() {
+        // --- Arrange: İki kullanıcı oluştur ---
+        AccountDto followerDto = AccountDto.builder().userId(UUID.randomUUID()).username("followerUser").build();
+        AccountDto followedDto = AccountDto.builder().userId(UUID.randomUUID()).username("followedUser").build();
+
+        // API üzerinden kullanıcıları kaydet
+        webTestClient.post().uri("/user/account").bodyValue(followerDto).exchange().expectStatus().isOk();
+        webTestClient.post().uri("/user/account").bodyValue(followedDto).exchange().expectStatus().isOk();
+
+        // Kaydedilen kullanıcıların ID'lerini al
+        Account follower = accountRepository.findByUsername("followerUser").block();
+        Account followed = accountRepository.findByUsername("followedUser").block();
+        assertThat(follower).isNotNull();
+        assertThat(followed).isNotNull();
+
+        UserFollowerDto followRequest = new UserFollowerDto(follower.getUserId(), followed.getUserId());
+
+        // --- Act 1: Follow (Takip Et) ---
+        webTestClient.post().uri("/user/follow")
+                .bodyValue(followRequest)
+                .exchange()
+                .expectStatus().isOk(); // Mono<Void> olduğu için 200 OK bekliyoruz.
+
+        // --- Assert 1: Takip durumunu doğrula ---
+        webTestClient.get().uri("/user/followers/" + followed.getUserId())
+                .exchange()
+                .expectStatus().isOk()
+                .expectBodyList(UserFollower.class).hasSize(1)
+                .value(followers -> {
+                    assertThat(followers.get(0).getFollowerId()).isEqualTo(follower.getUserId());
+                });
+
+        // --- Act 2: Unfollow (Takipten Çık) ---
+        webTestClient.post().uri("/user/unfollow")
+                .bodyValue(followRequest)
+                .exchange()
+                .expectStatus().isOk();
+
+        // --- Assert 2: Takipten çıkma durumunu doğrula ---
+        webTestClient.get().uri("/user/followers/" + followed.getUserId())
+                .exchange()
+                .expectStatus().isOk()
+                .expectBodyList(UserFollower.class).hasSize(0); // Takipçi listesi boş olmalı
     }
 }
