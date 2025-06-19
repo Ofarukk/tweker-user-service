@@ -27,11 +27,9 @@ public class FollowUserUseCaseImpl implements FollowUserUseCase {
                     existing.setUpdatedAt(LocalDateTime.now());
                     return followerRepository.save(existing);
                 })
-                .switchIfEmpty(
+                .switchIfEmpty(Mono.defer(() ->
                         followerRepository.save(UserFollowerMapper.toEntity(dto))
-                )
-                .flatMap(saved ->
-                        kafkaProducer.sendUserFollowedEvent(dto.getFollowerId(), dto.getFollowedId())
-                );
+                ))
+                .then(kafkaProducer.sendUserFollowedEvent(dto.getFollowerId(), dto.getFollowedId()));
     }
 }
